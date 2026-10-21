@@ -154,6 +154,8 @@ check("刷分检测：正常文案不命中", m.detect_cheat("我们靠独家宿
 # 14. 反例命中分析（三类反例：决策错误/执行偏差/外部突变）
 st_ce = m.init_state()
 check("init_state 含 completed 空列表", st_ce.get("completed") == [], str(st_ce.get("completed")))
+check("四幕分组覆盖26步", len(m.ACTS) == 4 and sum(e - s + 1 for _, _, s, e in m.ACTS) == 26,
+      str([(t, s, e) for _, t, s, e in m.ACTS]))
 st_ce["risks"] = {1: "启动备用供应商预案（多花5万应急费，供应稳定）",
                   2: "跟随降价10%（保客户，毛利下降）",
                   3: "补齐资质合规经营（一次性成本+8万）"}

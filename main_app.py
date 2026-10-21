@@ -27,7 +27,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-APP_VERSION = "V1.2.2"
+APP_VERSION = "V1.2.3"
 INIT_CASH = 1_000_000  # 100 万元启动资金
 MONTHS = [1, 2, 3, 4]
 
@@ -65,6 +65,15 @@ QUALITY_GATES = {
     25: "AI 五维判定完成",
     26: "提交路演 → 终评",
 }
+
+
+# 四幕故事线（侧边栏实验导航分组）
+ACTS = [
+    ("🎬", "第1幕 开局抉择", 1, 5),
+    ("📐", "第2幕 商业画布", 6, 14),
+    ("⚔️", "第3幕 4P作战", 15, 20),
+    ("🏆", "第4幕 路演登顶", 21, 26),
+]
 
 
 STEPS = [
@@ -819,6 +828,26 @@ def css():
         padding: 2px 6px; min-height: 0; font-size: .82rem; line-height: 1.35;
     }
     [data-testid="stSidebar"] div[role="radiogroup"] label p {margin: 0;}
+    /* 侧边栏四幕分组卡片 */
+    [data-testid="stSidebar"] div[data-testid="stExpander"] {
+        margin: 5px 0; border-radius: 10px; border: 1px solid #FFE4C4; background: #fff;
+    }
+    [data-testid="stSidebar"] div[data-testid="stExpander"] summary {
+        font-size: .86rem; padding: 7px 12px;
+    }
+    [data-testid="stSidebar"] div[data-testid="stExpanderDetails"] {padding: 3px 8px 8px;}
+    [data-testid="stSidebar"] .stProgress > div > div {height: 6px;}
+    /* 侧边栏步骤跳转按钮：轻量列表式 */
+    [data-testid="stSidebar"] div[data-testid="stButton"] button {
+        width: 100%; justify-content: flex-start; text-align: left;
+        background: transparent; border: none; box-shadow: none;
+        color: #7C2D12; font-size: .82rem; font-weight: 400;
+        padding: 3px 8px; min-height: 27px; border-radius: 8px;
+    }
+    [data-testid="stSidebar"] div[data-testid="stButton"] button:hover {
+        background: #FFEDD5; color: #C2410C;
+    }
+    [data-testid="stSidebar"] div[data-testid="stButton"] button p {margin: 0;}
     /* 侧边栏：暖橙紧凑四因子卡 */
     [data-testid="stSidebar"] {
         background: #FFF1E6; border-right: 1px solid #FFE4C4;
@@ -882,16 +911,8 @@ def redline_banner(state):
         st.warning(f"🚨 {r}")
 
 
-def step_no_of(label):
-    """从「第N步 xxx」解析步骤号"""
-    try:
-        return int(str(label).replace("第", "").split("步")[0])
-    except Exception:
-        return 0
-
-
 def sidebar_nav(state):
-    """左侧导航栏：常驻四因子 + 26 步实验导航（已完成步骤打 ✅，紧凑列表）"""
+    """左侧导航栏：常驻四因子 + 四幕分组的 26 步实验导航（当前幕展开、已完成 ✅、当前步 🔸、进度条）"""
     with st.sidebar:
         st.markdown("#### 📊 四因子（实时）")
         c1, c2 = st.columns(2)
@@ -904,12 +925,19 @@ def sidebar_nav(state):
         st.markdown("### 🧭 实验导航")
         if st.session_state.get("nav_section") == "🧭 决策台" and state.get("started"):
             completed = set(state.get("completed", []))
-            step_labels = [f"第{i}步 {n}" for i, n, _, _ in STEPS]
-            sel = st.radio("步骤跳转", step_labels, key="nav_step",
-                           label_visibility="collapsed",
-                           format_func=lambda x: ("✅ " + x) if step_no_of(x) in completed else x)
-            state["step"] = step_labels.index(sel) + 1
-            st.caption(f"✅ 已完成 {len(completed)}/26 步 · 当前第 {state['step']} 步")
+            cur = state["step"]
+            done = len(completed)
+            st.progress(min(done / 26.0, 1.0))
+            st.caption(f"进度 {done}/26 · 当前第 {cur} 步")
+            for emoji, title, s, e in ACTS:
+                with st.expander(f"{emoji} {title}", key=f"exp_a{s}",
+                                 expanded=st.session_state.get(f"exp_a{s}", s <= cur <= e)):
+                    for i, name, _, _ in STEPS[s - 1:e]:
+                        marker = "🔸" if i == cur else ("✅" if i in completed else "○")
+                        if st.button(f"{marker} {i} {name}", key=f"nav_btn_{i}",
+                                     use_container_width=True):
+                            st.session_state["_go_step"] = i
+                            st.rerun()
         else:
             st.caption("进入决策台并开始实验后，这里显示 26 步导航")
         st.markdown("---")
@@ -1523,7 +1551,8 @@ def main():
         st.session_state["nav_section"] = "🧭 决策台"
     go_step = st.session_state.pop("_go_step", None)
     if go_step:
-        st.session_state["nav_step"] = step_label(go_step)
+        for emoji, title, s, e in ACTS:
+            st.session_state[f"exp_a{s}"] = (s <= go_step <= e)
     done_notice = st.session_state.pop("_done_notice", None)
     state = st.session_state
     if "engine" not in state:

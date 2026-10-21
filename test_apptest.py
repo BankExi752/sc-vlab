@@ -52,9 +52,12 @@ check("进入第2步", "第 2 幕 · 选赛道" in all_text(at))
 check("第1步完成提示出现", "第 1 步「开局剧本与契约」已完成" in all_text(at))
 eng_done = at.session_state["engine"].get("completed", [])
 check("第1步已标记完成(对号)", 1 in eng_done, str(eng_done))
-sb_radios = at.sidebar.radio
-check("侧边栏26步导航radio存在", len(sb_radios) == 1 and len(sb_radios[0].options) == 26,
-      f"{len(sb_radios)}个 radio, options={len(sb_radios[0].options) if sb_radios else 0}")
+sb_btns = [b for b in at.sidebar.button if b.key and str(b.key).startswith("nav_btn_")]
+check("侧边栏26步跳转按钮存在", len(sb_btns) == 26, f"{len(sb_btns)} 个")
+lbl1 = [b.label for b in sb_btns if b.key == "nav_btn_1"]
+check("已完成步骤带对号", bool(lbl1) and "✅" in lbl1[0], str(lbl1))
+lbl2 = [b.label for b in sb_btns if b.key == "nav_btn_2"]
+check("当前步骤带标记", bool(lbl2) and "🔸" in lbl2[0], str(lbl2))
 
 # 2 赛道
 by_key(at.radio, "s2_track")[0].set_value("🛵 校园即时配送"); at.run()
