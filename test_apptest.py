@@ -50,6 +50,11 @@ by_key(at.radio, "s1_read")[0].set_value("仔细阅读剧本与契约（+2）");
 next_step(at)
 check("进入第2步", "第 2 幕 · 选赛道" in all_text(at))
 check("第1步完成提示出现", "第 1 步「开局剧本与契约」已完成" in all_text(at))
+eng_done = at.session_state["engine"].get("completed", [])
+check("第1步已标记完成(对号)", 1 in eng_done, str(eng_done))
+sb_radios = at.sidebar.radio
+check("侧边栏26步导航radio存在", len(sb_radios) == 1 and len(sb_radios[0].options) == 26,
+      f"{len(sb_radios)}个 radio, options={len(sb_radios[0].options) if sb_radios else 0}")
 
 # 2 赛道
 by_key(at.radio, "s2_track")[0].set_value("🛵 校园即时配送"); at.run()

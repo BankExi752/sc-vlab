@@ -27,7 +27,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-APP_VERSION = "V1.2"
+APP_VERSION = "V1.2.2"
 INIT_CASH = 1_000_000  # 100 万元启动资金
 MONTHS = [1, 2, 3, 4]
 
@@ -310,6 +310,7 @@ def init_state():
         "ai_plan": None,
         "blocked_canvas": False,
         "redline_log": [],
+        "completed": [],               # 已完成步骤（侧边栏实验导航打 ✅）
     }
 
 
@@ -799,11 +800,11 @@ def css():
     div[data-testid="stMetricValue"] {color:#7C2D12;}
     /* 顶部板块导航（st-key-nav_section）tab 化：隐藏圆点但保留文字 */
     .st-key-nav_section div[role="radiogroup"] {
-        gap: 8px; flex-wrap: wrap; margin-bottom: 2px;
+        gap: 6px; flex-wrap: wrap; margin-bottom: 2px;
     }
     .st-key-nav_section label {
         background: #ffffff; border: 1px solid #FFE4C4; border-radius: 999px;
-        padding: 8px 18px; cursor: pointer; transition: all .15s ease;
+        padding: 7px 12px; font-size: .9rem; cursor: pointer; transition: all .15s ease;
     }
     .st-key-nav_section label > span {display:none;}          /* 隐藏 input 包装 */
     .st-key-nav_section label div:not(:has(p)) {display:none;} /* 只隐藏圆点，文字在 <p> 内保留 */
@@ -812,6 +813,12 @@ def css():
         background: #F97316; border-color: #F97316; box-shadow: 0 4px 12px rgba(249,115,22,.30);
     }
     .st-key-nav_section label:has(input:checked) p {color:#fff; font-weight:600;}
+    /* 侧边栏 26 步导航：紧凑列表，一屏能看更多步骤 */
+    [data-testid="stSidebar"] div[role="radiogroup"] {gap: 0;}
+    [data-testid="stSidebar"] div[role="radiogroup"] label {
+        padding: 2px 6px; min-height: 0; font-size: .82rem; line-height: 1.35;
+    }
+    [data-testid="stSidebar"] div[role="radiogroup"] label p {margin: 0;}
     /* 侧边栏：暖橙紧凑四因子卡 */
     [data-testid="stSidebar"] {
         background: #FFF1E6; border-right: 1px solid #FFE4C4;
@@ -875,8 +882,16 @@ def redline_banner(state):
         st.warning(f"🚨 {r}")
 
 
+def step_no_of(label):
+    """从「第N步 xxx」解析步骤号"""
+    try:
+        return int(str(label).replace("第", "").split("步")[0])
+    except Exception:
+        return 0
+
+
 def sidebar_nav(state):
-    """左侧导航栏：常驻四因子 + 26 步实验导航（板块导航已移至页面上方）"""
+    """左侧导航栏：常驻四因子 + 26 步实验导航（已完成步骤打 ✅，紧凑列表）"""
     with st.sidebar:
         st.markdown("#### 📊 四因子（实时）")
         c1, c2 = st.columns(2)
@@ -888,10 +903,13 @@ def sidebar_nav(state):
         st.markdown("---")
         st.markdown("### 🧭 实验导航")
         if st.session_state.get("nav_section") == "🧭 决策台" and state.get("started"):
+            completed = set(state.get("completed", []))
             step_labels = [f"第{i}步 {n}" for i, n, _, _ in STEPS]
             sel = st.radio("步骤跳转", step_labels, key="nav_step",
-                           label_visibility="collapsed")
+                           label_visibility="collapsed",
+                           format_func=lambda x: ("✅ " + x) if step_no_of(x) in completed else x)
             state["step"] = step_labels.index(sel) + 1
+            st.caption(f"✅ 已完成 {len(completed)}/26 步 · 当前第 {state['step']} 步")
         else:
             st.caption("进入决策台并开始实验后，这里显示 26 步导航")
         st.markdown("---")
@@ -1377,6 +1395,8 @@ def render_pager(state, step_no):
             if blocked:
                 can_next = False
             if can_next and st.button("下一步 ➡", key="next_step", type="primary", use_container_width=True):
+                if step_no not in state.get("completed", []):
+                    state.setdefault("completed", []).append(step_no)
                 st.session_state["_go_step"] = step_no + 1
                 st.session_state["_done_notice"] = f"🎉 第 {step_no} 步「{STEPS[step_no-1][1]}」已完成，进入下一步"
                 st.rerun()
@@ -1400,6 +1420,8 @@ def finish_experiment(state, d, track):
     state["scores"], state["total_score"], state["grade"] = scores, total, grade
     state["counterexamples"] = analyze_counterexamples(state, d, track)
     state["finished"] = True
+    if 26 not in state.get("completed", []):
+        state.setdefault("completed", []).append(26)
     audit_append(state, 26, "虚拟路演+终评", "提交", f"总分 {total} · {grade}")
 
 
