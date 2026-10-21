@@ -27,7 +27,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-APP_VERSION = "V1.1"
+APP_VERSION = "V1.2"
 INIT_CASH = 1_000_000  # 100 万元启动资金
 MONTHS = [1, 2, 3, 4]
 
@@ -35,6 +35,37 @@ MONTHS = [1, 2, 3, 4]
 # 一、元数据：板块 / 26 步主线 / 赛道 / 卡片池 / 词条
 # ============================================================================
 SECTIONS = ["🏠 实验导览", "🧭 决策台", "📋 复盘报告", "🛡 能力画像", "📄 经营决策报告"]
+
+# 质量门（experience-distillation L1·C6）：每步通过线 / 未过退回
+QUALITY_GATES = {
+    1: "开局必读剧本与契约",
+    2: "选定赛道（拿到市场基准价）",
+    3: "痛点 ≥ 2 个",
+    4: "画像匹配赛道最优客群",
+    5: "确认竞品价与需求指数",
+    6: "客户细分 ≥ 1 项",
+    7: "价值主张非空话（有具体承诺）",
+    8: "渠道通路 ≥ 1 项",
+    9: "客户关系完成单选",
+    10: "收入来源 ≠ 0（不可只选不收费）",
+    11: "关键资源 ≥ 1 项",
+    12: "关键业务 ≥ 1 项",
+    13: "重要伙伴 ≥ 1 项",
+    14: "成本结构合计 = 100%",
+    15: "MVP 恰好 3 个（>5 成本暴涨）",
+    16: "定价偏离基准 ≤ ±40%",
+    17: "渠道预算合计 3~25 万",
+    18: "促销组合 ≥ 2 个",
+    19: "4P 一致性无自相矛盾",
+    20: "Month 1 完成结算",
+    21: "R1 应对并结算 Month 2（资金红线检查）",
+    22: "R2 应对并结算 Month 3",
+    23: "R3 合规经营（无资质 = 直接失败）",
+    24: "壁垒与风险必写（留白 → 路演封顶60）",
+    25: "AI 五维判定完成",
+    26: "提交路演 → 终评",
+}
+
 
 STEPS = [
     (1, "开局剧本与契约", "C", 2),
@@ -670,6 +701,64 @@ def detect_cheat(text):
     return hits >= 2 and len(t) >= 30
 
 
+def analyze_counterexamples(state, decisions, track):
+    """三类反例命中分析（experience-distillation L1·C5）：
+    决策错误 / 执行偏差 / 外部突变，每条输出 命中+说明。"""
+    d = decisions
+    rows = []
+
+    # ── 决策错误类（恒输出：命中/未命中）──
+    plan_text = "".join([str((d.get("plan") or {}).get(k, "")) for k in ("壁垒", "融资用途")])
+    cheat = detect_cheat(plan_text)
+    rows.append({"类": "决策错误", "反例": "刷分套话", "命中": cheat,
+                 "说明": "计划书出现复制粘贴通用套话，触发刷分红线" if cheat else "计划书为原创表述"})
+    empty = canvas_empty_talk(d)
+    rows.append({"类": "决策错误", "反例": "空话价值主张", "命中": bool(empty),
+                 "说明": f"价值主张含空话：{empty[0]}" if empty else "价值主张有具体承诺"})
+    persona = d.get("persona", "")
+    t = TRACKS.get(d.get("track_key", ""), track)
+    conflict = persona == t.get("conflict_persona")
+    rows.append({"类": "决策错误", "反例": "画像错位", "命中": conflict,
+                 "说明": f"画像「{persona}」与赛道「{t['name']}」冲突" if conflict else "画像与赛道匹配"})
+
+    # ── 执行偏差类（恒输出）──
+    alloc = d.get("cost_alloc", {}) or {}
+    sum_alloc = sum(alloc.values())
+    rows.append({"类": "执行偏差", "反例": "成本结构失衡", "命中": bool(alloc) and abs(sum_alloc - 100) > 0.5,
+                 "说明": f"成本合计 {sum_alloc}%，须 =100%" if (alloc and abs(sum_alloc - 100) > 0.5)
+                 else ("成本结构未填写" if not alloc else "成本结构合计 100%")})
+    mvp = d.get("mvp", []) or []
+    mvp_n = len(mvp)
+    mvp_hit = mvp_n > 5 or 0 < mvp_n < 3 or mvp_n == 0
+    mvp_note = ("MVP 超 5 个功能，固定成本 ×1.8" if mvp_n > 5
+                else ("MVP 不足 3 个功能，价值支撑不足" if 0 < mvp_n < 3
+                      else ("MVP 未选择" if mvp_n == 0 else "MVP 恰好 3 个，克制验证")))
+    rows.append({"类": "执行偏差", "反例": "MVP 取舍失衡", "命中": mvp_hit, "说明": mvp_note})
+    ch_wan = sum(d.get(k, 0) for k in CHANNEL_KEYS)
+    rows.append({"类": "执行偏差", "反例": "渠道预算失控", "命中": ch_wan > 25,
+                 "说明": f"渠道合计 {ch_wan} 万，超过 25 万上限" if ch_wan > 25 else f"渠道合计 {ch_wan} 万，在合理区间"})
+    rows.append({"类": "执行偏差", "反例": "零获客通路", "命中": ch_wan == 0,
+                 "说明": "渠道投放为 0，没有获客通路" if ch_wan == 0 else "至少一条获客通路在运转"})
+
+    # ── 外部突变类 ──
+    for k, name in ((1, "R1 供应链/内容违规"), (2, "R2 竞品降价/技术替代"), (3, "R3 政策合规")):
+        opt = state.get("risks", {}).get(k)
+        opt_map = (R1_OPTIONS, R2_OPTIONS, R3_OPTIONS)[k - 1]
+        if opt:
+            score = opt_map.get(opt, {}).get("score", 0)
+            rows.append({
+                "类": "外部突变", "反例": name, "命中": score < 3,
+                "说明": f"应对「{opt}」" + ("（承压，应对欠佳）" if score < 3 else "（应对得当）"),
+            })
+        else:
+            rows.append({"类": "外部突变", "反例": name, "命中": True, "说明": "未应对风险事件"})
+    if any("资金红线" in r for r in state.get("redline_log", [])):
+        rows.append({"类": "外部突变", "反例": "资金红线", "命中": True, "说明": "现金≤0 触发资金红线"})
+    if state.get("compliance_fail"):
+        rows.append({"类": "外部突变", "反例": "合规红线", "命中": True, "说明": "无资质经营，实验直接失败"})
+    return rows
+
+
 def build_plan_autofill(decisions, track):
     """计划书骨架自动灌入（Step24 顶部展示）"""
     pains = "、".join(decisions.get("pains", [])[:3]) or "（待补）"
@@ -694,50 +783,68 @@ def md_html(s):
 
 
 def css():
+    """创新创业故事板风：底色 #FFF7ED / 主色 #F97316 / 热血真实基调
+    （视觉语言参考开源项目 themesberg/tailwind-dashboard-windster 的暖橙卡片式
+     面板 + Ant Design Timeline 的叙事时间线，落地为 Streamlit 主题）"""
     st.markdown("""
     <style>
-    .main {background: linear-gradient(160deg,#f5f7ff 0%, #eef3fb 100%);}
+    .main {background: linear-gradient(165deg,#FFF7ED 0%, #FFEDD5 55%, #FFF7ED 100%);}
     .block-container {padding-top: 1.4rem;}
+    /* 指标卡：暖白底 + 橙边 */
     div[data-testid="stMetric"] {
-        background: rgba(255,255,255,0.92); border-radius: 14px; padding: 12px 14px;
-        box-shadow: 0 2px 10px rgba(30,60,140,0.08); border: 1px solid #e3e9f7;
+        background: rgba(255,255,255,0.94); border-radius: 14px; padding: 12px 14px;
+        box-shadow: 0 2px 10px rgba(249,115,22,0.10); border: 1px solid #FFE4C4;
     }
-    div[data-testid="stMetricLabel"] {font-size: 0.86rem; color:#5a6b8c;}
-    /* 顶部板块导航 tab 化（横向平铺、选中高亮） */
+    div[data-testid="stMetricLabel"] {font-size: 0.86rem; color:#9A3412;}
+    div[data-testid="stMetricValue"] {color:#7C2D12;}
+    /* 顶部板块导航 tab 化（橙底选中） */
     div[data-testid="stRadio"] div[role="radiogroup"] {
         gap: 8px; flex-wrap: wrap; margin-bottom: 2px;
     }
     div[data-testid="stRadio"] label {
-        background: #ffffff; border: 1px solid #e3e9f7; border-radius: 999px;
+        background: #ffffff; border: 1px solid #FFE4C4; border-radius: 999px;
         padding: 8px 20px; cursor: pointer; transition: all .15s ease;
     }
     div[data-testid="stRadio"] label div {display:none;}   /* 隐藏圆点，纯 tab 视觉 */
-    div[data-testid="stRadio"] label:hover {border-color:#9db5f5; background:#f4f7ff;}
+    div[data-testid="stRadio"] label:hover {border-color:#F97316; background:#FFF1E6;}
     div[data-testid="stRadio"] label:has(input:checked) {
-        background: #1f3a93; border-color: #1f3a93; box-shadow: 0 4px 12px rgba(31,58,147,.22);
+        background: #F97316; border-color: #F97316; box-shadow: 0 4px 12px rgba(249,115,22,.30);
     }
     div[data-testid="stRadio"] label:has(input:checked) span {color:#fff; font-weight:600;}
-    /* 侧边栏四因子紧凑卡片 */
-    [data-testid="stSidebar"] div[data-testid="stMetric"] {
-        padding: 8px 10px; border-radius: 10px;
+    /* 侧边栏：暖橙紧凑四因子卡 */
+    [data-testid="stSidebar"] {
+        background: #FFF1E6; border-right: 1px solid #FFE4C4;
     }
-    [data-testid="stSidebar"] div[data-testid="stMetricLabel"] {font-size:.78rem;}
-    [data-testid="stSidebar"] div[data-testid="stMetricValue"] {font-size:1.02rem;}
+    [data-testid="stSidebar"] div[data-testid="stMetric"] {
+        background:#fff; padding: 8px 10px; border-radius: 10px;
+        border: 1px solid #FFE4C4;
+    }
+    [data-testid="stSidebar"] div[data-testid="stMetricLabel"] {font-size:.78rem; color:#9A3412;}
+    [data-testid="stSidebar"] div[data-testid="stMetricValue"] {font-size:1.02rem; color:#7C2D12;}
+    /* 故事板主视觉 Banner */
     .banner {
-        background: linear-gradient(120deg,#1f3a93,#3f6df5); color:#fff; border-radius: 16px;
-        padding: 22px 26px; box-shadow: 0 6px 22px rgba(31,58,147,0.25); margin-bottom: 10px;
+        background: linear-gradient(120deg,#EA580C,#F97316 60%,#FB923C); color:#fff; border-radius: 16px;
+        padding: 22px 26px; box-shadow: 0 6px 22px rgba(249,115,22,0.30); margin-bottom: 10px;
     }
     .banner h1 {margin:0; font-size: 1.55rem; line-height:1.35;}
-    .banner p {margin:8px 0 0; opacity:.92; font-size:.95rem;}
+    .banner p {margin:8px 0 0; opacity:.95; font-size:.95rem;}
+    /* 故事板卡片：暖白 + 橙色描边 */
     .stepcard {
-        background: #fff; border-radius: 14px; padding: 16px 18px; margin: 8px 0;
-        border: 1px solid #e6ebf6; box-shadow: 0 2px 8px rgba(30,60,140,0.06);
+        background: #ffffff; border-radius: 14px; padding: 16px 18px; margin: 8px 0;
+        border: 1px solid #FFD9B0; box-shadow: 0 3px 10px rgba(249,115,22,0.08);
     }
-    .tag {display:inline-block; background:#eef3ff; color:#1f3a93; border-radius:20px;
+    .tag {display:inline-block; background:#FFEDD5; color:#C2410C; border-radius:20px;
         padding: 2px 10px; font-size:.78rem; margin:2px;}
-    .redline {background:#fff1f0; border:1px solid #ffccc7; border-radius:12px; padding:10px 14px; margin:6px 0;}
-    .goodline {background:#f0fff4; border:1px solid #b7eb8f; border-radius:12px; padding:10px 14px; margin:6px 0;}
-    div[data-testid="stExpander"] {background:#fff; border-radius:12px; border:1px solid #e6ebf6;}
+    .redline {background:#FFF1F0; border:1px solid #FFCCC7; border-radius:12px; padding:10px 14px; margin:6px 0;}
+    .goodline {background:#FFF1E6; border:1px solid #FFD9B0; border-radius:12px; padding:10px 14px; margin:6px 0;}
+    /* 方法论引擎卡片 */
+    .method {
+        background: linear-gradient(135deg,#FFF7ED,#FFEDD5); border: 1px solid #FFD9B0;
+        border-left: 5px solid #F97316; border-radius: 12px; padding: 12px 16px; margin: 8px 0;
+    }
+    .method b {color:#C2410C;}
+    div[data-testid="stExpander"] {background:#fff; border-radius:12px; border:1px solid #FFD9B0;}
+    h1, h2, h3 {color:#7C2D12;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -809,35 +916,43 @@ def goto_step(state, n):
 # 四、决策台：26 步
 # ============================================================================
 def render_landing(state):
-    st.markdown('<div class="banner"><h1>🪙 双创决策沙盘</h1>'
-                '<p>从商业画布 → 4P作战 → 计划书路演的算账闭环 · 虚拟仿真实验 V1.1</p></div>',
+    st.markdown('<div class="banner"><h1>🔥 双创决策沙盘</h1>'
+                '<p>大学生创业者的热血之旅 · 从商业画布到路演登顶 · 虚拟仿真实验 V1.2</p></div>',
                 unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
     c1.metric("💰 启动资金", "100万")
     c2.metric("🗓 经营周期", "4 个月")
     c3.metric("🎯 通关目标", "估值≥150万")
     st.markdown("### 📜 你的绩效契约（开局必读）")
-    st.info("你以 **初创公司 CEO** 身份入场：100 万元虚拟启动资金、4 个月经营周期。"
-            "目标：第 4 月末 **估值 ≥ 150 万 且 现金 > 0 且 客户数 ≥ 1000**。"
-            "每一步卡片选择、滑块定价、预算投放都会即时改变 **现金 / 客户数 / 毛利 / 评分** 四项指标。")
-    st.markdown("### 🗺 实验地图（26 步）")
+    st.info("你是一名 **大学生创业者**，揣着 100 万元虚拟启动资金和 4 个月窗口期冲进市场。"
+            "目标只有一个：第 4 月末 **估值 ≥ 150 万 且 现金 > 0 且 客户数 ≥ 1000**——"
+            "拿到下一轮融资，让投资人看到你的本事。每一步卡片选择、滑块定价、预算投放都会即时改变 "
+            "**现金 / 客户数 / 毛利 / 评分** 四项指标。热血是真的，残酷也是真的。")
+    st.markdown("### 🗺 实验地图（26 步 · 四幕故事线）")
     m1, m2, m3, m4 = st.columns(4)
     with m1:
-        st.markdown("**① 开局决策**（第1-5步）\n\n赛道·痛点·画像·市场")
+        st.markdown("**🎬 第1幕 开局抉择**（第1-5步）\n\n赛道·痛点·画像·市场")
     with m2:
-        st.markdown("**② 商业画布**（第6-14步）\n\n九格卡片化+成本结构")
+        st.markdown("**📐 第2幕 商业画布**（第6-14步）\n\n九格卡片化+成本结构")
     with m3:
-        st.markdown("**③ 4P作战**（第15-20步）\n\nMVP·定价·渠道·促销·结算")
+        st.markdown("**⚔️ 第3幕 4P作战**（第15-20步）\n\nMVP·定价·渠道·促销·结算")
     with m4:
-        st.markdown("**④ 计划书与路演**（第21-26步）\n\n风险事件·计划书·AI判定·路演")
+        st.markdown("**🏆 第4幕 路演登顶**（第21-26步）\n\n风险事件·计划书·AI判定·路演")
     st.markdown("### 🚨 三条红线")
     st.markdown('<div class="redline">🩸 <b>资金红线</b>：现金≤0 且融资失败 → 破产终止<br>'
                 '🩸 <b>合规红线</b>：无资质经营金融/医疗/食品类 → 直接失败<br>'
                 '🩸 <b>画布红线</b>：价值主张空话 且 收入来源=0 → 不能进入4P</div>', unsafe_allow_html=True)
+    st.markdown("### 🎯 方法论引擎（DEC 蒸馏框架 · 六组件已映射到本实验）")
+    st.markdown("""<div class="method"><b>① DEC 原子单元</b>：每一步 = 决策(D)→执行(E)→后果(C)，26 步即 26 个 DEC 单元</div>
+<div class="method"><b>② 双层拆解</b>：层次一（教师/评分引擎：七模块 100 分制）＋ 层次二（学习者：26 步决策主线）</div>
+<div class="method"><b>③ 五步法</b>：拆解→决策骨架→参数化→反例注入→交叉验证，对应 四幕故事线 的推进节奏</div>
+<div class="method"><b>④ 七维元参数</b>：目标函数(通关目标)·约束(三条红线)·资源(100万/4月)·路径(26步)·风险(R1-R3)·反馈(四因子)·干系人(CEO/投资人)</div>
+<div class="method"><b>⑤ 三类反例</b>：决策错误(刷分套话/空话主张)·执行偏差(成本≠100%/贪多)·外部突变(R1-R3 风险事件)</div>
+<div class="method"><b>⑥ 质量门</b>：每步设通过线，未过退回（如第14步成本合计=100% 才能进入 4P）</div>""", unsafe_allow_html=True)
     with st.expander("💡 小白化词条库（20 个）"):
         for term, one, case, sample in GLOSSARY:
             st.markdown(f"**{term}**：{one} ｜ 案例：{case} ｜ 本题：{sample}")
-    if st.button("🚀 开始实验（进入第1步）", key="launch", type="primary", use_container_width=True):
+    if st.button("🚀 开始我的创业之旅（进入第1步）", key="launch", type="primary", use_container_width=True):
         if not state.get("started"):
             state["started"] = True
             state["step"] = 1
@@ -873,8 +988,8 @@ def render_step(state):
         settle_month(state, 1, d, t)
         audit_append(state, 20, "月度结算", "Month 1 结算", f"现金 {state['cash']:,.0f} / 客户 {state['customers']}")
 
-    st.markdown(f'<div class="banner"><h1>第 {step_no} 步 · {step_name}</h1>'
-                f'<p>交互：{ctrl} ｜ 满分 {full} ｜ 当前进度 {step_no}/26</p></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="banner"><h1>第 {step_no} 幕 · {step_name}</h1>'
+                f'<p>交互：{ctrl} ｜ 满分 {full} ｜ 进度 {step_no}/26 ｜ 质量门：{QUALITY_GATES.get(step_no, "完成本步全部交互")}</p></div>', unsafe_allow_html=True)
     redline_banner(state)
     factor_dashboard(state)
 
@@ -1282,6 +1397,7 @@ def finish_experiment(state, d, track):
     check_pass_goal(state, d, track)
     scores, total, grade = compute_scores(state, d, track)
     state["scores"], state["total_score"], state["grade"] = scores, total, grade
+    state["counterexamples"] = analyze_counterexamples(state, d, track)
     state["finished"] = True
     audit_append(state, 26, "虚拟路演+终评", "提交", f"总分 {total} · {grade}")
 
@@ -1307,9 +1423,20 @@ def render_final_report(state, d, track):
         {"模块": k, "得分": v} for k, v in state["scores"].items()
     ] + [{"模块": "总分", "得分": state["total_score"]}])
     st.table(df_score)
-    grade_color = {"优秀": "#52c41a", "合格": "#faad14", "不合格": "#f5222d"}
+    grade_color = {"优秀": "#EA580C", "合格": "#F97316", "不合格": "#DC2626"}
     st.markdown(f"**终局评定：<span style='color:{grade_color.get(state['grade'],'#333')};font-size:1.4rem'>"
                 f"{state['grade']}</span>**", unsafe_allow_html=True)
+    st.markdown("#### 📌 反例命中分析（三类反例 · DEC 质量回溯）")
+    cex = state.get("counterexamples") or analyze_counterexamples(state, d, track)
+    if cex:
+        df_cex = pd.DataFrame(cex)
+        st.table(df_cex)
+        hits = [c for c in cex if c["命中"]]
+        if hits:
+            st.warning(f"共命中 {len(hits)} 个反例：决策错误/执行偏差/外部突变 任一类都会压低总分，"
+                       f"下次实验请对照质量门逐条复盘。")
+        else:
+            st.success("✅ 未命中任何反例——决策、执行、风控全链路稳健！")
     with st.expander("📋 完整审计日志"):
         st.table(pd.DataFrame(state["audit"]))
     csv = pd.DataFrame(state["audit"]).to_csv(index=False).encode("utf-8-sig")

@@ -151,5 +151,37 @@ check("满分路径等级=优秀", grade == "优秀", grade)
 check("刷分检测：通用套话命中", m.detect_cheat("本项目致力于赋能校园生态，打造一站式闭环，积极响应号召，众所周知") is True)
 check("刷分检测：正常文案不命中", m.detect_cheat("我们靠独家宿舍楼合作把送达时间压到30分钟") is False)
 
+# 14. 反例命中分析（三类反例：决策错误/执行偏差/外部突变）
+st_ce = m.init_state()
+st_ce["risks"] = {1: "启动备用供应商预案（多花5万应急费，供应稳定）",
+                  2: "跟随降价10%（保客户，毛利下降）",
+                  3: "补齐资质合规经营（一次性成本+8万）"}
+st_ce["decisions"] = {
+    "cost_alloc": {"研发": 30, "营销": 40, "人力": 20, "合规": 5, "场地": 5},
+    "mvp": ["a", "b", "c"], "ch_online": 5, "ch_ground": 5, "ch_agent": 5,
+    "persona": "大一大二新生（价格敏感）", "track_key": "🛵 校园即时配送",
+    "canvas_价值主张": ["30分钟必达（具体承诺）"],
+    "plan": {"壁垒": "独家宿舍楼合作+配送算法", "融资用途": "50%研发、30%市场、20%备付金"},
+}
+rows = m.analyze_counterexamples(st_ce, st_ce["decisions"], T)
+cats = {r["类"] for r in rows}
+check("反例分析覆盖三类", cats == {"决策错误", "执行偏差", "外部突变"}, str(sorted(cats)))
+check("满分路径无反例命中", all(not r["命中"] for r in rows), str([r for r in rows if r["命中"]]))
+
+st_bad = m.init_state()
+st_bad["risks"] = {1: "换用无资质小作坊（便宜但风险高）", 2: "死扛不降价（客户大量流失）", 3: "无资质硬扛经营（合规红线→直接失败）"}
+st_bad["redline_log"] = ["资金红线：完成融资 50 万（利息10万），实验继续", "合规红线触发：无资质经营 → 实验直接失败"]
+st_bad["compliance_fail"] = True
+st_bad["decisions"] = {
+    "cost_alloc": {"研发": 60, "营销": 60, "人力": 20, "合规": 5, "场地": 5},
+    "mvp": ["a", "b", "c", "d", "e", "f"], "ch_online": 30, "ch_ground": 0, "ch_agent": 0,
+    "persona": "教职工与研究生（高客单、重品质）", "track_key": "🛵 校园即时配送",
+    "canvas_价值主张": ["“赋能校园生态”（空话）"],
+    "plan": {"壁垒": "本项目致力于赋能校园生态，打造一站式解决方案，积极响应号召，众所周知", "融资用途": "本项目致力于赋能校园生态，打造一站式解决方案"},
+}
+rows2 = m.analyze_counterexamples(st_bad, st_bad["decisions"], T)
+hits2 = [r for r in rows2 if r["命中"]]
+check("坏路径命中多个反例", len(hits2) >= 5, f"命中 {len(hits2)} 个: {[r['反例'] for r in hits2]}")
+
 print("\n==== 冒烟结果:", "ALL PASS" if not fails else f"FAILED: {fails}", "====")
 sys.exit(0 if not fails else 1)
