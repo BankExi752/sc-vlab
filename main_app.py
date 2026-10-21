@@ -27,7 +27,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-APP_VERSION = "V1.2.3"
+APP_VERSION = "V1.2.4"
 INIT_CASH = 1_000_000  # 100 万元启动资金
 MONTHS = [1, 2, 3, 4]
 
@@ -799,7 +799,10 @@ def css():
     st.markdown("""
     <style>
     .main {background: linear-gradient(165deg,#FFF7ED 0%, #FFEDD5 55%, #FFF7ED 100%);}
-    .block-container {padding-top: 1.4rem;}
+    .block-container {padding-top: 0.8rem;}
+    /* 隐藏 Streamlit 悬浮工具条（白色条，会遮挡页面顶部标题） */
+    header[data-testid="stHeader"] {display: none !important;}
+    [data-testid="stSidebarHeader"] {display: none !important;}
     /* 指标卡：暖白底 + 橙边 */
     div[data-testid="stMetric"] {
         background: rgba(255,255,255,0.94); border-radius: 14px; padding: 12px 14px;
