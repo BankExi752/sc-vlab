@@ -37,6 +37,8 @@ at = AppTest.from_file(APP, default_timeout=120)
 at.run()
 check("着陆页出现应用名", "双创决策沙盘" in all_text(at))
 check("着陆页有绩效契约", "绩效契约" in all_text(at))
+check("顶部板块导航横向 radio", len(by_key(at.radio, "nav_section")) == 1, f"{len(by_key(at.radio, 'nav_section'))} 个")
+check("侧边栏四因子指标", len(at.sidebar.metric) >= 4, f"{len(at.sidebar.metric)} 个")
 
 by_key(at.button, "launch")[0].click(); at.run()
 check("进入第1步", "第 1 步 · 开局剧本与契约" in all_text(at))
@@ -45,14 +47,15 @@ check("进入第1步", "第 1 步 · 开局剧本与契约" in all_text(at))
 by_key(at.radio, "s1_read")[0].set_value("仔细阅读剧本与契约（+2）"); at.run()
 next_step(at)
 check("进入第2步", "第 2 步 · 选赛道" in all_text(at))
+check("第1步完成提示出现", "第 1 步「开局剧本与契约」已完成" in all_text(at))
 
 # 2 赛道
 by_key(at.radio, "s2_track")[0].set_value("🛵 校园即时配送"); at.run()
 next_step(at)
 check("进入第3步", "第 3 步 · 选痛点卡片" in all_text(at))
 
-# 3 痛点
-by_key(at.multiselect, "s3_pains")[0].set_value([
+# 3 痛点（pills 平铺多选）
+by_key(at.pills, "s3_pains")[0].set_value([
     "下课10分钟没饭吃，排队太久", "外卖送到宿舍楼下不让进，取餐麻烦"]); at.run()
 next_step(at)
 check("进入第4步", "第 4 步 · 用户画像匹配" in all_text(at))
@@ -80,7 +83,7 @@ canvas_sets = {
 }
 for key, val in canvas_sets.items():
     if isinstance(val, list):
-        by_key(at.multiselect, key)[0].set_value(val)
+        by_key(at.pills, key)[0].set_value(val)
     else:
         by_key(at.radio, key)[0].set_value(val)
     at.run()
@@ -94,8 +97,8 @@ at.run()
 next_step(at)
 check("进入第15步", "产品功能栈" in all_text(at))
 
-# 15 MVP
-by_key(at.multiselect, "s15_mvp")[0].set_value(["下单小程序", "实时定位配送", "智能拼单"]); at.run()
+# 15 MVP（pills 平铺多选）
+by_key(at.pills, "s15_mvp")[0].set_value(["下单小程序", "实时定位配送", "智能拼单"]); at.run()
 next_step(at)
 check("进入第16步", "定价" in all_text(at))
 
@@ -111,8 +114,8 @@ at.run()
 next_step(at)
 check("进入第18步", "促销组合" in all_text(at))
 
-# 18 促销
-by_key(at.multiselect, "s18_promos")[0].set_value(["首单立减3元", "分享裂变红包"]); at.run()
+# 18 促销（pills 平铺多选）
+by_key(at.pills, "s18_promos")[0].set_value(["首单立减3元", "分享裂变红包"]); at.run()
 next_step(at)
 check("进入第19步", "4P 一致性校验" in all_text(at))
 check("AI 裁判判定出现", "AI 判定总分" in all_text(at))

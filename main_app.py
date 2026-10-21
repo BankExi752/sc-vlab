@@ -27,7 +27,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-APP_VERSION = "V1.0"
+APP_VERSION = "V1.1"
 INIT_CASH = 1_000_000  # 100 万元启动资金
 MONTHS = [1, 2, 3, 4]
 
@@ -703,6 +703,26 @@ def css():
         box-shadow: 0 2px 10px rgba(30,60,140,0.08); border: 1px solid #e3e9f7;
     }
     div[data-testid="stMetricLabel"] {font-size: 0.86rem; color:#5a6b8c;}
+    /* 顶部板块导航 tab 化（横向平铺、选中高亮） */
+    div[data-testid="stRadio"] div[role="radiogroup"] {
+        gap: 8px; flex-wrap: wrap; margin-bottom: 2px;
+    }
+    div[data-testid="stRadio"] label {
+        background: #ffffff; border: 1px solid #e3e9f7; border-radius: 999px;
+        padding: 8px 20px; cursor: pointer; transition: all .15s ease;
+    }
+    div[data-testid="stRadio"] label div {display:none;}   /* 隐藏圆点，纯 tab 视觉 */
+    div[data-testid="stRadio"] label:hover {border-color:#9db5f5; background:#f4f7ff;}
+    div[data-testid="stRadio"] label:has(input:checked) {
+        background: #1f3a93; border-color: #1f3a93; box-shadow: 0 4px 12px rgba(31,58,147,.22);
+    }
+    div[data-testid="stRadio"] label:has(input:checked) span {color:#fff; font-weight:600;}
+    /* 侧边栏四因子紧凑卡片 */
+    [data-testid="stSidebar"] div[data-testid="stMetric"] {
+        padding: 8px 10px; border-radius: 10px;
+    }
+    [data-testid="stSidebar"] div[data-testid="stMetricLabel"] {font-size:.78rem;}
+    [data-testid="stSidebar"] div[data-testid="stMetricValue"] {font-size:1.02rem;}
     .banner {
         background: linear-gradient(120deg,#1f3a93,#3f6df5); color:#fff; border-radius: 16px;
         padding: 22px 26px; box-shadow: 0 6px 22px rgba(31,58,147,0.25); margin-bottom: 10px;
@@ -748,14 +768,24 @@ def redline_banner(state):
 
 
 def sidebar_nav(state):
+    """左侧导航栏：常驻四因子 + 26 步实验导航（板块导航已移至页面上方）"""
     with st.sidebar:
+        st.markdown("#### 📊 四因子（实时）")
+        c1, c2 = st.columns(2)
+        c1.metric("现金（元）", f"{state['cash']:,.0f}")
+        c2.metric("客户数", f"{state['customers']:,}")
+        c3, c4 = st.columns(2)
+        c3.metric("月毛利（元）", f"{state['gross_margin']:,.0f}")
+        c4.metric("路演分", f"{state['pitch_score']:.0f}")
+        st.markdown("---")
         st.markdown("### 🧭 实验导航")
-        section = st.radio("板块", SECTIONS, key="nav_section", label_visibility="collapsed")
-        if section == "🧭 决策台" and state.get("started"):
+        if st.session_state.get("nav_section") == "🧭 决策台" and state.get("started"):
             step_labels = [f"第{i}步 {n}" for i, n, _, _ in STEPS]
             sel = st.radio("步骤跳转", step_labels, key="nav_step",
                            label_visibility="collapsed")
             state["step"] = step_labels.index(sel) + 1
+        else:
+            st.caption("进入决策台并开始实验后，这里显示 26 步导航")
         st.markdown("---")
         st.caption(f"应用版本 {APP_VERSION} · 四因子算账闭环")
         st.caption("决策有代价，选择需谨慎 🎯")
@@ -780,7 +810,7 @@ def goto_step(state, n):
 # ============================================================================
 def render_landing(state):
     st.markdown('<div class="banner"><h1>🪙 双创决策沙盘</h1>'
-                '<p>从商业画布 → 4P作战 → 计划书路演的算账闭环 · 虚拟仿真实验 V1.0</p></div>',
+                '<p>从商业画布 → 4P作战 → 计划书路演的算账闭环 · 虚拟仿真实验 V1.1</p></div>',
                 unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
     c1.metric("💰 启动资金", "100万")
@@ -814,8 +844,6 @@ def render_landing(state):
             audit_append(state, 0, "开始实验", "点击开始", "实验启动")
         st.session_state["_go_deck"] = True
         st.rerun()
-    if state.get("started") and st.button("↩️ 返回决策台", key="back_to_deck", use_container_width=True):
-        state["step"] = max(1, state.get("step", 1))
 
 
 def settle_remaining(state, decisions, track):
@@ -887,7 +915,8 @@ def render_step(state):
             st.warning("⚠️ 你还没有选择赛道，请先回到第2步选赛道。")
         else:
             st.caption(f"当前赛道：{d.get('track')} —— 从真实用户麻烦里挑至少 2 个痛点。")
-            sel = st.multiselect("痛点", pool, key="s3_pains", label_visibility="collapsed")
+            sel = st.pills("痛点", pool, key="s3_pains", selection_mode="multi",
+                           label_visibility="collapsed") or []
             d["pains"] = sel
             if len(sel) == 1:
                 st.warning("⚠️ 只选 1 个痛点 → 决策分 −2；选 ≥2 个才得满分。")
@@ -920,8 +949,8 @@ def render_step(state):
 
     elif step_no == 15:
         st.markdown("### 🧩 产品功能栈（MVP 取舍，多选恰好 3 个）")
-        sel = st.multiselect("MVP 功能（选 3 个，>5 个成本暴涨）", MVP_FEATURES,
-                             key="s15_mvp", label_visibility="collapsed")
+        sel = st.pills("MVP 功能（选 3 个，>5 个成本暴涨）", MVP_FEATURES,
+                       key="s15_mvp", selection_mode="multi", label_visibility="collapsed") or []
         d["mvp"] = sel
         if len(sel) == 3:
             st.success("✅ MVP 克制，先验证再砸钱 → +5")
@@ -962,7 +991,8 @@ def render_step(state):
 
     elif step_no == 18:
         st.markdown("### 🎁 促销组合（多选，≥2 个更佳）")
-        sel = st.multiselect("促销", PROMOS, key="s18_promos", label_visibility="collapsed")
+        sel = st.pills("促销", PROMOS, key="s18_promos", selection_mode="multi",
+                       label_visibility="collapsed") or []
         d["promos"] = sel
         if len(sel) >= 2:
             st.success("✅ 促销组合丰富，获客系数 +12%/个（上限3个）")
@@ -1164,7 +1194,8 @@ def render_canvas(state, step_no):
             sel_one = st.radio(cell, pool, key=f"s{step_no}_{cell}", label_visibility="collapsed")
             sel = [sel_one] if sel_one else []
         else:
-            sel = st.multiselect(cell, pool, key=f"s{step_no}_{cell}", label_visibility="collapsed")
+            sel = st.pills(cell, pool, key=f"s{step_no}_{cell}", selection_mode="multi",
+                           label_visibility="collapsed") or []
         d[f"canvas_{cell}"] = sel
         if step_no == 7:
             empty = [v for v in sel if v in EMPTY_TALK]
@@ -1231,6 +1262,7 @@ def render_pager(state, step_no):
                 can_next = False
             if can_next and st.button("下一步 ➡", key="next_step", type="primary", use_container_width=True):
                 st.session_state["_go_step"] = step_no + 1
+                st.session_state["_done_notice"] = f"🎉 第 {step_no} 步「{STEPS[step_no-1][1]}」已完成，进入下一步"
                 st.rerun()
         else:
             st.caption("最后一环：提交路演后查看终评")
@@ -1342,6 +1374,7 @@ def main():
     go_step = st.session_state.pop("_go_step", None)
     if go_step:
         st.session_state["nav_step"] = step_label(go_step)
+    done_notice = st.session_state.pop("_done_notice", None)
     state = st.session_state
     if "engine" not in state:
         state["engine"] = init_state()
@@ -1350,6 +1383,13 @@ def main():
         eng["step"] = go_step
     if "step" not in state:
         state["step"] = 1
+
+    # 页面上方：实验导航（横向平铺 tab）
+    st.markdown("### 🧭 实验导航")
+    st.radio("板块", SECTIONS, key="nav_section", horizontal=True, label_visibility="collapsed")
+    st.markdown("---")
+    if done_notice:
+        st.success(done_notice)
 
     sidebar_nav(eng)
     section = st.session_state.get("nav_section", SECTIONS[0])
