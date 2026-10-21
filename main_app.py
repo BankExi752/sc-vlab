@@ -797,20 +797,21 @@ def css():
     }
     div[data-testid="stMetricLabel"] {font-size: 0.86rem; color:#9A3412;}
     div[data-testid="stMetricValue"] {color:#7C2D12;}
-    /* 顶部板块导航 tab 化（橙底选中） */
-    div[data-testid="stRadio"] div[role="radiogroup"] {
+    /* 顶部板块导航（st-key-nav_section）tab 化：隐藏圆点但保留文字 */
+    .st-key-nav_section div[role="radiogroup"] {
         gap: 8px; flex-wrap: wrap; margin-bottom: 2px;
     }
-    div[data-testid="stRadio"] label {
+    .st-key-nav_section label {
         background: #ffffff; border: 1px solid #FFE4C4; border-radius: 999px;
-        padding: 8px 20px; cursor: pointer; transition: all .15s ease;
+        padding: 8px 18px; cursor: pointer; transition: all .15s ease;
     }
-    div[data-testid="stRadio"] label div {display:none;}   /* 隐藏圆点，纯 tab 视觉 */
-    div[data-testid="stRadio"] label:hover {border-color:#F97316; background:#FFF1E6;}
-    div[data-testid="stRadio"] label:has(input:checked) {
+    .st-key-nav_section label > span {display:none;}          /* 隐藏 input 包装 */
+    .st-key-nav_section label div:not(:has(p)) {display:none;} /* 只隐藏圆点，文字在 <p> 内保留 */
+    .st-key-nav_section label:hover {border-color:#F97316; background:#FFF1E6;}
+    .st-key-nav_section label:has(input:checked) {
         background: #F97316; border-color: #F97316; box-shadow: 0 4px 12px rgba(249,115,22,.30);
     }
-    div[data-testid="stRadio"] label:has(input:checked) span {color:#fff; font-weight:600;}
+    .st-key-nav_section label:has(input:checked) p {color:#fff; font-weight:600;}
     /* 侧边栏：暖橙紧凑四因子卡 */
     [data-testid="stSidebar"] {
         background: #FFF1E6; border-right: 1px solid #FFE4C4;
